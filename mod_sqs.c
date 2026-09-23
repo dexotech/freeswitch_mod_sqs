@@ -86,6 +86,7 @@ SWITCH_MODULE_DEFINITION(mod_sqs, mod_sqs_load, mod_sqs_shutdown, NULL);
 static switch_status_t mod_sqs_profile_create(const char *name, switch_xml_t cfg);
 static void *SWITCH_THREAD_FUNC mod_sqs_sender_thread(switch_thread_t *thread, void *data);
 static void mod_sqs_event_handler(switch_event_t *evt);
+static char *sanitize_msg(char *msg);
 switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session);
 
 // State handler for receiving CDRs
@@ -110,6 +111,91 @@ void free_msg(mod_sqs_message_t *msg) {
 		switch_safe_free(msg->unique_key);
 		switch_safe_free(msg);
 	}
+}
+
+//Returns if the character is allowed in SQS
+static int sqs_char_allowed(unsigned int cp)
+{
+	return cp == 0x9 || cp == 0xA || cp == 0xD
+		|| (cp >= 0x20 && cp <= 0xD7FF)
+		|| (cp >= 0xE000 && cp <= 0xFFFD)
+		|| (cp >= 0x10000 && cp <= 0x10FFFF);
+}
+
+/*
+ * Strip invalid UTF-8 sequences and SQS-disallowed Unicode from msg in place.
+ * Returns msg (NULL-safe). Message length only shrinks.
+ */
+static char* sanitize_msg(char *msg)
+{
+	unsigned char *src;
+	unsigned char *dst;
+
+	if (!msg) {
+		return NULL;
+	}
+
+	src = (unsigned char *)msg;
+	dst = src;
+
+	while (*src) {
+		unsigned int cp;
+		int len = 0;
+
+		//This is to figureout if the string is n-byte UTF-8
+		if (src[0] <= 0x7F) {
+			cp = src[0];
+			len = 1;
+		} else if ((src[0] & 0xE0) == 0xC0) {
+			if ((src[1] & 0xC0) != 0x80) {
+				src++;
+				continue;
+			}
+			cp = ((src[0] & 0x1F) << 6) | (src[1] & 0x3F);
+			if (cp < 0x80) {
+				src += 2;
+				continue;
+			}
+			len = 2;
+		} else if ((src[0] & 0xF0) == 0xE0) {
+			if ((src[1] & 0xC0) != 0x80 || (src[2] & 0xC0) != 0x80) {
+				src++;
+				continue;
+			}
+			cp = ((src[0] & 0x0F) << 12) | ((src[1] & 0x3F) << 6) | (src[2] & 0x3F);
+			if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) {
+				src += 3;
+				continue;
+			}
+			len = 3;
+		} else if ((src[0] & 0xF8) == 0xF0) {
+			if ((src[1] & 0xC0) != 0x80 || (src[2] & 0xC0) != 0x80 || (src[3] & 0xC0) != 0x80) {
+				src++;
+				continue;
+			}
+			cp = ((src[0] & 0x07) << 18) | ((src[1] & 0x3F) << 12)
+				| ((src[2] & 0x3F) << 6) | (src[3] & 0x3F);
+			if (cp < 0x10000 || cp > 0x10FFFF) {
+				src += 4;
+				continue;
+			}
+			len = 4;
+		} else {
+			src++;
+			continue;
+		}
+
+		if (sqs_char_allowed(cp)) {
+			while (len--) {
+				*dst++ = *src++;
+			}
+		} else {
+			src += len;
+		}
+	}
+
+	*dst = '\0';
+	return msg;
 }
 
 /*** Module Initialization ***/
@@ -403,6 +489,7 @@ static void mod_sqs_event_handler(switch_event_t *evt) {
 	mod_sqs_message_t *msg;
 	switch_zmalloc(msg, sizeof(mod_sqs_message_t));
 	switch_event_serialize_json(evt, &msg->payload);
+	sanitize_msg(msg->payload);
 	switch_strdup(msg->event_name, switch_event_get_header(evt, "Event-Name"));
 	switch_strdup(msg->unique_key, switch_event_get_header(evt, "Event-Sequence"));
 	switch_tolower_max(msg->event_name);
@@ -437,6 +524,7 @@ switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session) {
 	}
 
 	switch_strdup(msg->payload, cJSON_PrintUnformatted(json_cdr));
+	sanitize_msg(msg->payload);
 
 	// Check if size of the serialized event is over 256KB, and reject it if it is as SQS does not support that size.
 	size_t size_in_bytes = strlen(msg->payload);
