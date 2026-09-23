@@ -409,8 +409,8 @@ static void mod_sqs_event_handler(switch_event_t *evt) {
 
     // Check if size of the serialized event is over 256KB, and reject it if it is as SQS does not support that size.
 	size_t size_in_bytes = strlen(msg->payload);
-	if (size_in_bytes > 262143) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Message payload larger than 256KB, dropping message!\n");
+	if (size_in_bytes > 1048576) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Message payload larger than 1MB, dropping message!\n");
 		free_msg(msg);
 	}
 
@@ -440,8 +440,8 @@ switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session) {
 
 	// Check if size of the serialized event is over 256KB, and reject it if it is as SQS does not support that size.
 	size_t size_in_bytes = strlen(msg->payload);
-	if (size_in_bytes > 262143) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "CDR payload larger than 256KB, dropping message!\n");
+	if (size_in_bytes > 1048576) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "CDR payload larger than 1MB, dropping message!\n");
 		goto cleanup;
 	}
 
