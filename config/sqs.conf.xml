@@ -1,0 +1,29 @@
+<configuration name="sqs.conf" description="mod_sqs">
+	<profiles>
+		<profile name="default">
+			<!-- Uncomment for a CDR profile, otherwise will be an event profile -->
+			<!-- <param name="type" value="cdr" /> -->
+
+			<!-- SQS settings -->
+			<param name="queue_url" value="https://sqs.<region>.amazonaws.com/<account_number>/<queue_name>"/>
+			<param name="access_key" value="<your-access-key>"/>
+			<param name="secret_key" value="<your-secret-key>"/>
+
+			<!-- Uncomment to mark as a FIFO queue -->
+			<!-- <param name="sqs_queue_type" value="fifo" /> -->
+
+			<!-- Size of the in-memory internal queue, default 5000 -->
+			<!-- <param name="internal_queue_size" value="100"/> -->
+
+			<!-- Time the module should stop processing events/cdrs if a submission error occurs, default 10000 -->
+			<!-- <param name="circuit_breaker_ms" value="10000"/> -->
+
+			<!-- Enable parallel submission -->
+			<param name="parallel_submission" value="true"/>
+			<param name="num_threads" value="2"/>
+
+			<!-- Comma separated list of event subscriptions. Will be ignored if type is cdr. -->
+			<param name="event_filter" value="SWITCH_EVENT_HEARTBEAT,CUSTOM^sofia::gateway_state"/>
+		</profile>
+	</profiles>
+</configuration>
