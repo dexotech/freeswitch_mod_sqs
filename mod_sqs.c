@@ -20,6 +20,7 @@
  */
 
 #include <switch.h>
+#include <switch_utf8.h>
 #include "sqs_helper.h"
 
 /*** Module Configuration ***/
@@ -113,7 +114,11 @@ void free_msg(mod_sqs_message_t *msg) {
 	}
 }
 
-//Returns if the character is allowed in SQS
+/*
+ * SQS message bodies may only contain XML Char Unicode:
+ *   #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+ * Filters out most C0/C1 controls (except tab/LF/CR), surrogates, and U+FFFE/U+FFFF.
+ */
 static int sqs_char_allowed(unsigned int cp)
 {
 	return cp == 0x9 || cp == 0xA || cp == 0xD
@@ -139,53 +144,74 @@ static char* sanitize_msg(char *msg)
 	dst = src;
 
 	while (*src) {
-		unsigned int cp;
+		//Step 1: drop all non utf-8 compliant bytes
+		unsigned int candidate_character;
 		int len = 0;
 
-		//This is to figureout if the string is n-byte UTF-8
-		if (src[0] <= 0x7F) {
-			cp = src[0];
+		// This is to figure out the character length from lead byte
+		// Checks if source byte 1 is an ascii UTF-8 character | 0xxxxxxx
+		if (src[0] <= 0x7F) { 
+			candidate_character = src[0];
 			len = 1;
+		// Checks if 2 byte UTF-8 sequence is valid | 110xxxxx 10xxxxxx
 		} else if ((src[0] & 0xE0) == 0xC0) {
-			if ((src[1] & 0xC0) != 0x80) {
+			if (isutf(src[1])) {
 				src++;
+				while (*src && !isutf(*src))
+					src++;
 				continue;
 			}
-			cp = ((src[0] & 0x1F) << 6) | (src[1] & 0x3F);
-			if (cp < 0x80) {
+			candidate_character = ((src[0] & 0x1F) << 6) | (src[1] & 0x3F);
+			if (candidate_character < 0x80) {
 				src += 2;
 				continue;
 			}
 			len = 2;
+		// Checks if 3 byte UTF-8 sequence is valid | 1110xxxx 10xxxxxx 10xxxxxx
 		} else if ((src[0] & 0xF0) == 0xE0) {
-			if ((src[1] & 0xC0) != 0x80 || (src[2] & 0xC0) != 0x80) {
+			// Continuations are !isutf (10xxxxxx). isutf here means ASCII/lead/NUL in a continuation slot which is not allowed
+			if (isutf(src[1]) || isutf(src[2])) {
 				src++;
+				while (*src && !isutf(*src))
+					src++;
 				continue;
 			}
-			cp = ((src[0] & 0x0F) << 12) | ((src[1] & 0x3F) << 6) | (src[2] & 0x3F);
-			if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) {
+			//Construct the candidate character
+			candidate_character = ((src[0] & 0x0F) << 12) | ((src[1] & 0x3F) << 6) | (src[2] & 0x3F);
+			//Validate the character
+			if (candidate_character < 0x800 || (candidate_character >= 0xD800 && candidate_character <= 0xDFFF)) {
 				src += 3;
 				continue;
 			}
 			len = 3;
+		// Checks if 4 byte UTF-8 sequence is valid | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 		} else if ((src[0] & 0xF8) == 0xF0) {
-			if ((src[1] & 0xC0) != 0x80 || (src[2] & 0xC0) != 0x80 || (src[3] & 0xC0) != 0x80) {
+			// Continuations are !isutf (10xxxxxx). isutf here means ASCII/lead/NUL in a continuation slot which is not allowed
+			if (isutf(src[1]) || isutf(src[2]) || isutf(src[3])) {
 				src++;
+				while (*src && !isutf(*src))
+					src++;
 				continue;
 			}
-			cp = ((src[0] & 0x07) << 18) | ((src[1] & 0x3F) << 12)
+			//Construct the candidate character
+			candidate_character = ((src[0] & 0x07) << 18) | ((src[1] & 0x3F) << 12)
 				| ((src[2] & 0x3F) << 6) | (src[3] & 0x3F);
-			if (cp < 0x10000 || cp > 0x10FFFF) {
+			//Validate the character
+			if (candidate_character < 0x10000 || candidate_character > 0x10FFFF) {
 				src += 4;
 				continue;
 			}
 			len = 4;
 		} else {
+			// Invalid lead (e.g. lone continuation); skip it and any following continuations
 			src++;
+			while (*src && !isutf(*src))
+				src++;
 			continue;
 		}
 
-		if (sqs_char_allowed(cp)) {
+		//Step 2. Check if character is allowed by sqs
+		if (sqs_char_allowed(candidate_character)) {
 			while (len--) {
 				*dst++ = *src++;
 			}
