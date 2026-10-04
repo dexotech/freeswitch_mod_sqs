@@ -450,6 +450,7 @@ switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session) {
 	// send message to the queue of all CDR profiles
 	for (hi = switch_core_hash_first(mod_sqs_globals.profile_hash); hi; hi = switch_core_hash_next(&hi)) {
 		mod_sqs_profile_t *profile;
+		mod_sqs_message_t *copy;
 		switch_core_hash_this(hi, NULL, NULL, (void **)&profile);
 
 		if (!profile || profile->type != CDR_PROFILE) continue;
@@ -461,10 +462,12 @@ switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session) {
 			continue;
 		}
 
-		switch_strdup(msg->event_name, "cdr");
-		switch_strdup(msg->unique_key, switch_core_session_get_uuid(session));
+		switch_zmalloc(copy, sizeof(mod_sqs_message_t));
+		switch_strdup(copy->payload, msg->payload);
+		switch_strdup(copy->event_name, "cdr");
+		switch_strdup(copy->unique_key, switch_core_session_get_uuid(session));
 
-		if (switch_queue_trypush(profile->send_queue, msg) != SWITCH_STATUS_SUCCESS) {
+		if (switch_queue_trypush(profile->send_queue, copy) != SWITCH_STATUS_SUCCESS) {
 			profile->circuit_breaker_reset_time = now + profile->circuit_breaker_ms * 1000;
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Queue full (profile '%s'), dropping message!\n", profile->name);
 		}
