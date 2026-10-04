@@ -428,12 +428,14 @@ switch_status_t mod_sqs_cdr_handler(switch_core_session_t *session) {
 	switch_bool_t skip_by_filter = SWITCH_FALSE;
 	switch_time_t now = switch_time_now();
 	switch_time_t reset_time;
+	switch_status_t return_status = SWITCH_STATUS_SUCCESS;
 
 	switch_zmalloc(msg, sizeof(mod_sqs_message_t));
     
 	if (switch_ivr_generate_json_cdr(session, &json_cdr, SWITCH_FALSE) != SWITCH_STATUS_SUCCESS) {
 		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error generating JSON CDR!\n");
-		return SWITCH_STATUS_FALSE;
+		return_status = SWITCH_STATUS_FALSE;
+		goto cleanup;
 	}
 
 	switch_strdup(msg->payload, cJSON_PrintUnformatted(json_cdr));
@@ -472,5 +474,6 @@ cleanup:
 	if (json_cdr) {
 		cJSON_Delete(json_cdr);
 	}
-	return SWITCH_STATUS_SUCCESS;
+	free_msg(msg);
+	return return_status;
 }
