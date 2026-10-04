@@ -103,7 +103,7 @@ static switch_state_handler_table_t state_handlers = {
 	/*.on_reporting */ mod_sqs_cdr_handler
 };
 
-void free_msg(mod_sqs_message_t *msg) {
+static void free_msg(mod_sqs_message_t *msg) {
 	if (msg) {
 		switch_safe_free(msg->payload);
 		switch_safe_free(msg->event_name);
@@ -412,12 +412,14 @@ static void mod_sqs_event_handler(switch_event_t *evt) {
 	if (size_in_bytes > 1048576) {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Message payload larger than 1MB, dropping message!\n");
 		free_msg(msg);
+		return;
 	}
 
 	if (switch_queue_trypush(profile->send_queue, msg) != SWITCH_STATUS_SUCCESS) {
 		profile->circuit_breaker_reset_time = now + profile->circuit_breaker_ms * 1000;
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Queue full, dropping message!\n");
 		free_msg(msg);
+		return;
 	}
 }
 
