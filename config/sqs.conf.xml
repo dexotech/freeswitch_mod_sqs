@@ -4,10 +4,10 @@
 			<!-- Uncomment for a CDR profile, otherwise will be an event profile -->
 			<!-- <param name="type" value="cdr" /> -->
 
-			<!-- SQS settings -->
+			<!-- SQS settings (AWS credentials are optional) -->
 			<param name="queue_url" value="https://sqs.<region>.amazonaws.com/<account_number>/<queue_name>"/>
-			<param name="access_key" value="<your-access-key>"/>
-			<param name="secret_key" value="<your-secret-key>"/>
+			<!-- <param name="access_key" value=""/> -->
+			<!-- <param name="secret_key" value=""/> -->
 
 			<!-- Uncomment to mark as a FIFO queue -->
 			<!-- <param name="sqs_queue_type" value="fifo" /> -->

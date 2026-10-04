@@ -23,8 +23,10 @@
 #include <aws/sqs/model/SendMessageRequest.h>
 #include <aws/sqs/model/SendMessageResult.h>
 #include <aws/core/auth/AWSCredentialsProvider.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <iostream>
 #include <cstring>
+#include <memory>
 #include <mutex>
 
 // Thread-safe initialization and shutdown
@@ -32,6 +34,9 @@ static std::once_flag sdk_init_flag;
 static std::once_flag sdk_shutdown_flag;
 
 // Configuration struct for AWS details
+// access_key_id/secret_key are optional: when either is NULL or empty,
+// the AWS SDK default credential provider chain is used instead
+// (environment variables, shared credential file, IAM instance profile).
 struct AwsConfig {
 	char* queue_url;
 	char* access_key_id;
@@ -63,12 +68,18 @@ extern "C" void shutdown_aws_sdk() {
 // Send a message to SQS (thread-safe)
 extern "C" int send_message_to_sqs(const AwsConfig* config, const SqsMessage* msg, char** error_message = nullptr) {
 	Aws::Client::ClientConfiguration clientConfig;
+	std::shared_ptr<Aws::Auth::AWSCredentialsProvider> provider;
 
-	Aws::Auth::AWSCredentials credentials;
-	credentials.SetAWSAccessKeyId(Aws::String(config->access_key_id));
-	credentials.SetAWSSecretKey(Aws::String(config->secret_key));
+	if (config->access_key_id != nullptr && config->secret_key != nullptr && config->access_key_id[0] != '\0' && config->secret_key[0] != '\0') {
+		Aws::Auth::AWSCredentials credentials;
+		credentials.SetAWSAccessKeyId(Aws::String(config->access_key_id));
+		credentials.SetAWSSecretKey(Aws::String(config->secret_key));
+		provider = std::make_shared<Aws::Auth::SimpleAWSCredentialsProvider>(credentials);
+	} else {
+		provider = std::make_shared<Aws::Auth::DefaultAWSCredentialsProviderChain>();
+	}
 
-	Aws::SQS::SQSClient sqs(credentials, clientConfig);
+	Aws::SQS::SQSClient sqs(provider, clientConfig);
 
 	Aws::SQS::Model::SendMessageRequest request;
 	request.SetQueueUrl(config->queue_url);
