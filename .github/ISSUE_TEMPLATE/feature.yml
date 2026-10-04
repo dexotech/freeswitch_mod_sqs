@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an improvement or new capability for mod_sqs
+title: "[feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! A short description of the
+        problem you're solving is more useful than a solution. We'd rather
+        hear what you need than how to implement it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or gap you're running into.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Optional. If you have a concrete idea (config knob, new queue behavior, API), sketch it here.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you've tried or considered, and why they don't work.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: FreeSWITCH version, how you deploy (in-tree build vs distro pkg-config), queue type, etc.
+    validations:
+      required: false

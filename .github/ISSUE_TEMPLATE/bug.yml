@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a bug or unexpected behavior in mod_sqs
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in the
+        sections below. Most of the questions are there because the module's
+        behavior depends on FreeSWITCH and AWS configuration details.
+  - type: input
+    id: mod_sqs_version
+    attributes:
+      label: mod_sqs version
+      description: Output of `fs_cli -x "module list | grep sqs"`, or the commit hash if built from source.
+      placeholder: "e.g. 1.0.0 or ad9088e"
+    validations:
+      required: true
+  - type: input
+    id: freeswitch_version
+    attributes:
+      label: FreeSWITCH version
+      description: Output of `fs_cli -x "version"`.
+      placeholder: "e.g. 1.10.8"
+    validations:
+      required: true
+  - type: dropdown
+    id: queue_type
+    attributes:
+      label: Queue type
+      options:
+        - standard
+        - fifo
+        - not sure / both
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior, with the exact error if any.
+    validations:
+      required: true
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-reproduce
+    attributes:
+      label: How to reproduce
+      description: |
+        Steps to reproduce the problem, including the relevant parts of
+        config/sqs.conf.xml (redact credentials! never paste access keys
+        or secrets into an issue).
+      placeholder: |
+        1. Configure queue ...
+        2. Trigger event ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: FreeSWITCH log lines (set loglevel debug for the mod_sqs module if needed). Redact credentials.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have checked the FreeSWITCH logs for the module
+        - label: I have redacted all credentials from this report
+        - label: I can reproduce this on the latest commit of main

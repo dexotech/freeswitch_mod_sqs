@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build mod_sqs (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out mod_sqs (with AWS SDK submodule)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake libtool pkg-config \
+            cmake libcurl4-openssl-dev libssl-dev zlib1g-dev \
+            libxml2-dev libedit-dev libspeexdsp-dev libopus-dev \
+            uuid-dev libpcre2-dev libtool-bin libspandsp-dev \
+            libspeexdsp-dev libspeex-dev yasm
+
+      - name: Build sofia-sip
+        run: |
+          git clone --depth 1 https://github.com/freeswitch/sofia-sip.git /tmp/sofia-sip
+          cd /tmp/sofia-sip
+          ./bootstrap.sh
+          ./configure --prefix=/usr --libdir=/usr/lib
+          make -j"$(nproc)"
+          sudo make install
+
+      - name: Build spandsp
+        run: |
+          git clone --depth 1 https://github.com/freeswitch/spandsp /tmp/spandsp
+          cd /tmp/spandsp
+          ./bootstrap.sh
+          ./configure --prefix=/usr --libdir=/usr/lib
+          make -j"$(nproc)"
+          sudo make install
+
+      # Heavy step: build a FreeSWITCH source checkout so the module can
+      # compile against its headers and the generated freeswitch.pc.
+      - name: Build FreeSWITCH source (headers + pkg-config)
+        run: |
+          git clone --depth 1 https://github.com/signalwire/freeswitch /tmp/freeswitch
+          cd /tmp/freeswitch
+          echo '' > build/modules.conf.in
+          ./bootstrap.sh
+          ./configure --prefix=/usr --libdir=/usr/lib
+          make -j"$(nproc)"
+          sudo make install
+
+      - name: Build AWS SDK (SQS only) from submodule
+        working-directory: deps/aws-sdk-cpp
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=/usr/lib \
+            -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=off \
+            -DAUTORUN_UNIT_TESTS=off -DBUILD_ONLY="sqs"
+          cmake --build . --parallel "$(nproc)"
+          sudo cmake --install .
+          sudo ldconfig
+
+      - name: Build mod_sqs
+        run: |
+          autoreconf -fi
+          ./configure --prefix=/usr --libdir=/usr/lib
+          make -j"$(nproc)"
+
+      # mod_sqs has no test/smoke target, so the smoke check is that the
+      # module object was actually produced.
+      - name: Smoke test (module built)
+        run: |
+          ls -l .libs/mod_sqs.so
+          test -f .libs/mod_sqs.so
