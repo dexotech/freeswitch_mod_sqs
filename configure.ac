@@ -23,11 +23,11 @@ m4_ifndef([PKG_CHECK_VAR], [
 ])
 
 PKG_CHECK_MODULES([AWS_SDK_CORE],[aws-cpp-sdk-core], [], [AC_ERROR([please install aws-cpp-sdk-core-devel to continue.])])
-CXXLAGS+=" `pkg-config aws-cpp-sdk-core --cflags`"
+CXXFLAGS+=" `pkg-config aws-cpp-sdk-core --cflags`"
 LDFLAGS+=" `pkg-config aws-cpp-sdk-core --libs`"
 
 PKG_CHECK_MODULES([AWS_SDK_SQS],[aws-cpp-sdk-sqs], [], [AC_ERROR([please install aws-cpp-sdk-sqs-devel to continue.])])
-CXXLAGS+=" `pkg-config aws-cpp-sdk-sqs --cflags`"
+CXXFLAGS+=" `pkg-config aws-cpp-sdk-sqs --cflags`"
 LDFLAGS+=" `pkg-config aws-cpp-sdk-sqs --libs`"
 
 PKG_CHECK_MODULES([FREESWITCH],[freeswitch], [], [AC_ERROR([please install freeswitch-devel to continue.])])
