@@ -317,6 +317,7 @@ static switch_status_t mod_sqs_profile_create(const char *name, switch_xml_t cfg
 	profile->event_count = 0;
 	profile->queue_type = SQS_STANDARD;
 	profile->active_threads = 0;
+	profile->circuit_breaker_reset_time = 0;
 
 	/* Parse XML configuration */
 	switch_xml_t param;
@@ -446,8 +447,17 @@ static void *SWITCH_THREAD_FUNC mod_sqs_sender_thread(switch_thread_t *thread, v
 			sqs_msg.body = msg->payload;
 
 			if (profile->queue_type == SQS_FIFO) {
-				asprintf(&sqs_msg.message_group_id, "%s_%s", profile->name, msg->event_name);
-				asprintf(&sqs_msg.message_deduplication_id, "%s_%s", msg->event_name, msg->unique_key);
+				if (asprintf(&sqs_msg.message_group_id, "%s_%s", profile->name, msg->event_name) < 0) {
+					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Failed to create message_group_id for FIFO queue (profile '%s', event '%s'). Message is lost!\n", profile->name, msg->event_name);
+					free_msg(msg);
+					continue;
+				}
+
+				if (asprintf(&sqs_msg.message_deduplication_id, "%s_%s", msg->event_name, msg->unique_key) < 0) {
+					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Failed to create message_deduplication_id for FIFO queue (profile '%s', event '%s', unique_key '%s'). Message is lost!\n", profile->name, msg->event_name, msg->unique_key);
+					free_msg(msg);
+					continue;
+				}
 			}
 
 			int result = send_message_to_sqs(profile->aws_params, &sqs_msg, &err);
@@ -494,7 +504,7 @@ static void mod_sqs_event_handler(switch_event_t *evt) {
 	switch_time_t reset_time;
 
 	if (!profile || !profile->running) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Event received but profile '%s' is not running\n", profile->name);
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Event received but profile '%s' is not running\n", profile ? profile->name : "(null)");
 		return;
 	}
 
@@ -507,7 +517,13 @@ static void mod_sqs_event_handler(switch_event_t *evt) {
 
 	mod_sqs_message_t *msg;
 	switch_zmalloc(msg, sizeof(mod_sqs_message_t));
-	switch_event_serialize_json(evt, &msg->payload);
+
+	if (switch_event_serialize_json(evt, &msg->payload) != SWITCH_STATUS_SUCCESS) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Failed to serialize event to JSON, dropping message!\n");
+		free_msg(msg);
+		return;
+	}
+
 	sanitize_msg(msg->payload);
 	switch_strdup(msg->event_name, switch_event_get_header(evt, "Event-Name"));
 	switch_strdup(msg->unique_key, switch_event_get_header(evt, "Event-Sequence"));
